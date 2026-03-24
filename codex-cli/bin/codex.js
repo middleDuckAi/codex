@@ -7,6 +7,8 @@ import { createRequire } from "node:module";
 import path from "path";
 import { fileURLToPath } from "url";
 
+process.title = "codex";
+
 // __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
