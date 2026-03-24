@@ -9198,10 +9198,14 @@ impl ChatWidget {
     }
 
     pub(crate) async fn show_review_branch_picker(&mut self, cwd: &Path) {
-        let branches = local_git_branches(cwd).await;
         let current_branch = current_branch_name(cwd)
             .await
             .unwrap_or_else(|| "(detached HEAD)".to_string());
+        let branches: Vec<String> = local_git_branches(cwd)
+            .await
+            .into_iter()
+            .filter(|branch| branch != &current_branch)
+            .collect();
         let mut items: Vec<SelectionItem> = Vec::with_capacity(branches.len());
 
         for option in branches {
