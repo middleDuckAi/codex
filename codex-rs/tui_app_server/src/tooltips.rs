@@ -408,4 +408,12 @@ content = "This is a test announcement"
             parse_announcement_tip_toml(toml)
         );
     }
+
+    #[test]
+    fn clipboard_tooltip_does_not_hardcode_a_shortcut_label() {
+        assert!(TOOLTIPS.iter().any(|tooltip| {
+            *tooltip == "Paste an image from your clipboard to attach it to your next message."
+        }));
+        assert!(!TOOLTIPS.iter().any(|tooltip| tooltip.contains("Ctrl+V")));
+    }
 }
