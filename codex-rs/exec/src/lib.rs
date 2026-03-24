@@ -832,6 +832,18 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
                             continue;
                         }
                     }
+                    EventMsg::ExecCommandEnd(payload) => {
+                        if payload.turn_id != task_id {
+                            continue;
+                        }
+                        if matches!(
+                            payload.status,
+                            codex_protocol::protocol::ExecCommandStatus::Failed
+                                | codex_protocol::protocol::ExecCommandStatus::Declined
+                        ) {
+                            error_seen = true;
+                        }
+                    }
                     EventMsg::TurnAborted(payload) => {
                         if payload.turn_id.as_deref() != Some(task_id.as_str()) {
                             continue;
