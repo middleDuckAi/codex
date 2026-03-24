@@ -763,7 +763,7 @@ fn render_local_link_target(dest_url: &str, cwd: Option<&Path>) -> Option<String
 /// local path. Plain path-like inputs always return `Some(...)` even if they are relative.
 fn parse_local_link_target(dest_url: &str) -> Option<(String, Option<String>)> {
     if dest_url.starts_with("file://") {
-        let url = Url::parse(dest_url).ok()?;
+        let url = parse_file_url_with_literal_spaces(dest_url)?;
         let path_text = file_url_to_local_path_text(&url)?;
         let location_suffix = url
             .fragment()
@@ -856,6 +856,15 @@ fn file_url_to_local_path_text(url: &Url) -> Option<String> {
     }
 
     Some(normalize_local_link_path_text(&path_text))
+}
+
+fn parse_file_url_with_literal_spaces(dest_url: &str) -> Option<Url> {
+    Url::parse(dest_url).ok().or_else(|| {
+        dest_url
+            .contains(' ')
+            .then(|| dest_url.replace(' ', "%20"))
+            .and_then(|encoded| Url::parse(&encoded).ok())
+    })
 }
 
 /// Normalize local-path text into the transcript display form.
