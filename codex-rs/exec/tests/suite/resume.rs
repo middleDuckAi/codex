@@ -104,6 +104,37 @@ fn last_user_image_count(path: &std::path::Path) -> usize {
     last_count
 }
 
+fn session_rollout_count(home_path: &std::path::Path) -> usize {
+    let sessions_dir = home_path.join("sessions");
+    if !sessions_dir.exists() {
+        return 0;
+    }
+
+    WalkDir::new(sessions_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".jsonl"))
+        .count()
+}
+
+fn extract_thread_started_id_from_jsonl(stdout: &[u8]) -> Option<String> {
+    let stdout = std::str::from_utf8(stdout).ok()?;
+    for line in stdout.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let item: Value = serde_json::from_str(line).ok()?;
+        if item.get("type").and_then(|value| value.as_str()) == Some("thread.started") {
+            return item
+                .get("thread_id")
+                .and_then(|value| value.as_str())
+                .map(str::to_string);
+        }
+    }
+    None
+}
+
 fn exec_fixture() -> anyhow::Result<std::path::PathBuf> {
     Ok(find_resource!("tests/fixtures/cli_responses_fixture.sse")?)
 }
@@ -555,6 +586,106 @@ fn exec_resume_accepts_images_after_subcommand() -> anyhow::Result<()> {
     assert_eq!(
         image_count, 2,
         "resume prompt should include both attached images"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn exec_resume_by_missing_id_fails_without_starting_new_session() -> anyhow::Result<()> {
+    let test = test_codex_exec();
+    let fixture = exec_fixture()?;
+    let repo_root = exec_repo_root()?;
+    let missing_id = "00000000-0000-0000-0000-000000000000";
+    let marker = format!("resume-missing-id-{}", Uuid::new_v4());
+    let prompt = format!("echo {marker}");
+
+    let output = test
+        .cmd()
+        .env("CODEX_RS_SSE_FIXTURE", &fixture)
+        .env("OPENAI_BASE_URL", "http://unused.local")
+        .arg("--skip-git-repo-check")
+        .arg("-C")
+        .arg(&repo_root)
+        .arg("resume")
+        .arg(missing_id)
+        .arg(&prompt)
+        .output()
+        .context("resume by missing id should return an error")?;
+
+    assert!(
+        !output.status.success(),
+        "resume by missing id unexpectedly succeeded: {output:?}"
+    );
+
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(
+        stderr.contains(&format!("Session not found: {missing_id}")),
+        "stderr missing not-found message: {stderr}"
+    );
+    assert_eq!(session_rollout_count(test.home_path()), 0);
+    assert!(
+        find_session_file_containing_marker(&test.home_path().join("sessions"), &marker).is_none(),
+        "resume by missing id should not create a new session rollout"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn exec_resume_by_ephemeral_id_fails_without_starting_new_session() -> anyhow::Result<()> {
+    let test = test_codex_exec();
+    let fixture = exec_fixture()?;
+    let repo_root = exec_repo_root()?;
+    let seed_output = test
+        .cmd()
+        .env("CODEX_RS_SSE_FIXTURE", &fixture)
+        .env("OPENAI_BASE_URL", "http://unused.local")
+        .arg("--skip-git-repo-check")
+        .arg("--ephemeral")
+        .arg("--json")
+        .arg("-C")
+        .arg(&repo_root)
+        .arg("echo ephemeral-seed")
+        .output()
+        .context("ephemeral seed run should succeed")?;
+
+    assert!(
+        seed_output.status.success(),
+        "ephemeral seed failed: {seed_output:?}"
+    );
+    let ephemeral_session_id = extract_thread_started_id_from_jsonl(&seed_output.stdout)
+        .context("missing thread.started id in ephemeral json output")?;
+
+    let marker = format!("resume-ephemeral-id-{}", Uuid::new_v4());
+    let prompt = format!("echo {marker}");
+    let output = test
+        .cmd()
+        .env("CODEX_RS_SSE_FIXTURE", &fixture)
+        .env("OPENAI_BASE_URL", "http://unused.local")
+        .arg("--skip-git-repo-check")
+        .arg("-C")
+        .arg(&repo_root)
+        .arg("resume")
+        .arg(&ephemeral_session_id)
+        .arg(&prompt)
+        .output()
+        .context("resume by ephemeral id should return an error")?;
+
+    assert!(
+        !output.status.success(),
+        "resume by ephemeral id unexpectedly succeeded: {output:?}"
+    );
+
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(
+        stderr.contains(&format!("Session not found: {ephemeral_session_id}")),
+        "stderr missing ephemeral not-found message: {stderr}"
+    );
+    assert_eq!(session_rollout_count(test.home_path()), 0);
+    assert!(
+        find_session_file_containing_marker(&test.home_path().join("sessions"), &marker).is_none(),
+        "resume by ephemeral id should not create a new session rollout"
     );
 
     Ok(())
