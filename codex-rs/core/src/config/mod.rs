@@ -1585,7 +1585,7 @@ fn resolve_tool_suggest_config(config_toml: &ConfigToml) -> ToolSuggestConfig {
 #[schemars(deny_unknown_fields)]
 pub struct AgentsToml {
     /// Maximum number of agent threads that can be open concurrently.
-    /// When unset, no limit is enforced.
+    /// When unset, Codex defaults this limit to 6.
     #[schemars(range(min = 1))]
     pub max_threads: Option<usize>,
     /// Maximum nesting depth allowed for spawned agent threads.
