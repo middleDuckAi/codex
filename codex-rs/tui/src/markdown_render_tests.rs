@@ -776,6 +776,16 @@ fn file_link_uses_target_path_for_hash_range() {
 }
 
 #[test]
+fn file_link_with_literal_spaces_uses_target_path() {
+    let text = render_markdown_text_for_cwd(
+        "[notes](<file:///Users/example/code/codex/docs/My File.md>)",
+        Path::new("/Users/example/code/codex"),
+    );
+    let expected = Text::from(Line::from_iter(["docs/My File.md".cyan()]));
+    assert_eq!(text, expected);
+}
+
+#[test]
 fn url_link_shows_destination() {
     let text = render_markdown_text("[docs](https://example.com/docs)");
     let expected = Text::from(Line::from_iter([
