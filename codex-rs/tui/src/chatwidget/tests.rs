@@ -148,9 +148,12 @@ use pretty_assertions::assert_eq;
 use serial_test::serial;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::fs;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
+use tempfile::TempDir;
 use tempfile::tempdir;
+use tokio::process::Command;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::unbounded_channel;
 use toml::Value as TomlValue;
@@ -187,6 +190,61 @@ fn snapshot(percent: f64) -> RateLimitSnapshot {
         credits: None,
         plan_type: None,
     }
+}
+
+async fn create_review_picker_git_repo() -> TempDir {
+    let repo = tempdir().expect("temp repo");
+    let envs = [
+        ("GIT_CONFIG_GLOBAL", "/dev/null"),
+        ("GIT_CONFIG_NOSYSTEM", "1"),
+    ];
+
+    Command::new("git")
+        .envs(envs)
+        .args(["init", "-b", "main"])
+        .current_dir(repo.path())
+        .output()
+        .await
+        .expect("git init");
+    Command::new("git")
+        .envs(envs)
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo.path())
+        .output()
+        .await
+        .expect("git config user.name");
+    Command::new("git")
+        .envs(envs)
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo.path())
+        .output()
+        .await
+        .expect("git config user.email");
+
+    fs::write(repo.path().join("README.md"), "seed").expect("write seed file");
+    Command::new("git")
+        .envs(envs)
+        .args(["add", "README.md"])
+        .current_dir(repo.path())
+        .output()
+        .await
+        .expect("git add");
+    Command::new("git")
+        .envs(envs)
+        .args(["commit", "-m", "seed"])
+        .current_dir(repo.path())
+        .output()
+        .await
+        .expect("git commit");
+    Command::new("git")
+        .envs(envs)
+        .args(["branch", "feature"])
+        .current_dir(repo.path())
+        .output()
+        .await
+        .expect("git branch feature");
+
+    repo
 }
 
 #[tokio::test]
@@ -7027,6 +7085,24 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
         chat.is_normal_backtrack_mode(),
         "expected to be back in normal composer mode"
     );
+}
+
+#[tokio::test]
+async fn review_branch_picker_excludes_current_branch() {
+    let repo = create_review_picker_git_repo().await;
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(None).await;
+
+    chat.show_review_branch_picker(repo.path()).await;
+
+    let popup = render_bottom_popup(&chat, 80);
+    assert_snapshot!(popup, @r"
+      Select a base branch
+
+      Type to search branches
+    › main -> feature
+
+      Press enter to confirm or esc to go back
+    ");
 }
 
 fn render_bottom_first_row(chat: &ChatWidget, width: u16) -> String {
