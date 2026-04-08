@@ -6,6 +6,9 @@ import { existsSync } from "fs";
 import { createRequire } from "node:module";
 import path from "path";
 import { fileURLToPath } from "url";
+import { setCodexProcessTitle } from "./process_title.js";
+
+setCodexProcessTitle();
 
 // __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
