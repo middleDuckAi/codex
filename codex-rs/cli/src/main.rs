@@ -1377,6 +1377,23 @@ mod tests {
         assert_eq!(args.prompt.as_deref(), Some("re-review"));
     }
 
+    #[test]
+    fn exec_help_does_not_advertise_a_second_positional() {
+        let mut cmd = MultitoolCli::command();
+        let exec = cmd
+            .find_subcommand_mut("exec")
+            .expect("exec subcommand should exist");
+
+        let mut help = Vec::new();
+        exec.write_long_help(&mut help)
+            .expect("exec help should render");
+        let help = String::from_utf8(help).expect("help should be utf-8");
+
+        assert!(help.contains("Usage: codex exec [OPTIONS] [PROMPT]"));
+        assert!(help.contains("codex exec [OPTIONS] <COMMAND> [ARGS]"));
+        assert!(!help.contains("[PROMPT] [COMMAND]"));
+    }
+
     fn app_server_from_args(args: &[&str]) -> AppServerCommand {
         let cli = MultitoolCli::try_parse_from(args).expect("parse");
         let Subcommand::AppServer(app_server) = cli.subcommand.expect("app-server present") else {
